@@ -1,1 +1,5 @@
 .vscode/
+pyvenv.cfg
+Scripts/
+Lib/
+Include/
