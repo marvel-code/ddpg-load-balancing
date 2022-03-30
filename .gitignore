@@ -5,3 +5,5 @@ Lib/
 Include/
 *.zip
 **/__pycache__/
+_/
+dist/

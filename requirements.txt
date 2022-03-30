@@ -5,3 +5,4 @@ stable-baselines3[extra]
 gym[all]
 #tensorflow==1.15.5
 #ale-py
+fnss
