@@ -1,9 +1,10 @@
 import sys
 
-K = int(sys.argv[1]) if len(sys.argv) > 1 else 4
-LINK_CAPACITY_MB = 8000
-LINK_DELAY_MS = 10
+# Topology
+LINK_CAPACITY_Mbps = 100
+LINK_DELAY_MS = 0
 
+# Graphics
 PADDING = 50
 D = 80 # base distance
 D_PODS = 1.5*D
@@ -11,6 +12,7 @@ D_CORE = 2*D
 
 
 
+K = int(sys.argv[1]) if len(sys.argv) > 1 else 4
 core_node_count = int((K / 2) ** 2)
 pod_count = K
 edge_per_pod_count = int(K / 2)
@@ -23,7 +25,7 @@ with open('dist/fat_tree.ned', 'w') as f:
         f.write(f'{tabs}{s}\n')
 
     def connection(down_node, up_node):
-        return f'{down_node}.up++ <--> {up_node}.down++;'
+        return f'{down_node}.up++ <--> {{delay={LINK_DELAY_MS}ms; datarate={LINK_CAPACITY_Mbps}.0Mbps;}} <--> {up_node}.down++;'
 
     def submodule(name, module, position='0,0'):
         return f'{name}: {module} {{ @display("p={position}"); }}'
@@ -76,3 +78,25 @@ with open('dist/fat_tree.ned', 'w') as f:
     indent = 0
     writeline('}')
 
+with open('dist/mynetwork.ini', 'w') as f:
+    indent = 0
+    def writeline(s):
+        tabs = ''.join(['\t'] * indent)
+        f.write(f'{tabs}{s}\n')
+
+    writeline('[General]')
+    writeline('network = FatTree')
+    writeline("FatTree.core*.type = 0")
+    writeline("FatTree.aggr*.type = 1")
+    writeline("FatTree.edge*.type = 2")
+
+    for c in range(core_node_count):
+        writeline(f"FatTree.core{c}.pod = -1")
+        writeline(f"FatTree.core{c}.number = {c}")
+    for p in range(pod_count):
+        for a in range(aggr_per_pod_count):
+            writeline(f"FatTree.aggr{p}{a}.pod = {p}")
+            writeline(f"FatTree.aggr{p}{a}.number = {a}")
+        for e in range(edge_per_pod_count):
+            writeline(f"FatTree.edge{p}{e}.pod = {p}")
+            writeline(f"FatTree.edge{p}{e}.number = {e}")
