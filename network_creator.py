@@ -27,6 +27,9 @@ with open('dist/fat_tree.ned', 'w') as f:
     def connection(down_node, up_node):
         return f'{down_node}.up++ <--> {{delay={LINK_DELAY_MS}ms; datarate={LINK_CAPACITY_Mbps}.0Mbps;}} <--> {up_node}.down++;'
 
+    def controller_connection(node):
+        return f'{node}.controller <--> controller.down++;'
+
     def submodule(name, module, position='0,0'):
         return f'{name}: {module} {{ @display("p={position}"); }}'
 
@@ -35,20 +38,24 @@ with open('dist/fat_tree.ned', 'w') as f:
     
     # Graphics
     centerX = PADDING + ((K/2-1)*D*K + D_PODS*(K - 1)) / 2
+    y = PADDING
     
     # submodules
     indent = 1
     writeline('submodules:')
     indent = 2
+    writeline('// SDN controller')
+    writeline(submodule(f'controller', 'Controller', f'{centerX},{y}'))
     writeline('// Core layer')
+    y += 3 * D
     for c in range(core_node_count):
-        writeline(submodule(f'core{c}', 'Node', f'{centerX + D * (c - (K/2)**2/2 + 0.5)},{PADDING}'))
+        writeline(submodule(f'core{c}', 'Node', f'{centerX + D * (c - (K/2)**2/2 + 0.5)},{y}'))
     for p in range(pod_count):
         writeline(f'// Pod {p}')
         for a in range(aggr_per_pod_count):
-            writeline(submodule(f'aggr{p}{a}', 'Node', f'{PADDING + p*((aggr_per_pod_count - 1) * D + D_PODS) + a*D},{PADDING + 2*D}'))
+            writeline(submodule(f'aggr{p}{a}', 'Node', f'{PADDING + p*((aggr_per_pod_count - 1) * D + D_PODS) + a*D},{y + 1*D}'))
         for e in range(edge_per_pod_count):
-            writeline(submodule(f'edge{p}{e}', 'Node', f'{PADDING + p*((edge_per_pod_count - 1) * D + D_PODS) + e*D},{PADDING + 3*D}'))
+            writeline(submodule(f'edge{p}{e}', 'Node', f'{PADDING + p*((edge_per_pod_count - 1) * D + D_PODS) + e*D},{y + 2*D}'))
     
     # connections
     indent = 1
@@ -71,6 +78,20 @@ with open('dist/fat_tree.ned', 'w') as f:
             for c in range(core_node_count):
                 core = f'core{c}'
                 writeline(connection(aggr, core))
+
+    # Controller connections
+    writeline('// Controller connections')
+    for p in range(pod_count):
+        for e in range(edge_per_pod_count):
+            edge = f'edge{p}{e}'
+            writeline(controller_connection(edge))
+    for p in range(pod_count):
+        for a in range(aggr_per_pod_count):
+            aggr = f'aggr{p}{a}'
+            writeline(controller_connection(aggr))
+    for c in range(core_node_count):
+        core = f'core{c}'
+        writeline(controller_connection(core))
 
 
     indent = 2

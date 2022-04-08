@@ -26,6 +26,7 @@ class DataCollector:
         """
         for source_node_name, linkState in link_states.items():
             self.link_states[(source_node_name, target_node_name)] = linkState
+        print(self.link_states)
 
     # Returns network state
     def get_network_state(self):
