@@ -13,7 +13,6 @@ if __name__ == '__main__':
     data_collector = DataCollector()
     
     def processDataCollectorUpdate(msg: str):
-        print(msg)
         p = msg.split(',')
         time: str = p[0]
         target_node_name: str = p[1]
@@ -23,7 +22,6 @@ if __name__ == '__main__':
             link_states[u[0]] = {
                 'utilization': int(u[1]),
             }
-        print(time)
         data_collector.update(target_node_name, link_states)
 
 

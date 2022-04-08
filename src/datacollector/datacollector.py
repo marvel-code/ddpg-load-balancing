@@ -17,6 +17,7 @@ class DataCollector:
     def reset(self):
         l.log("Reset state")
         self.link_states = {} # (node1,node2) -> LinkState
+        self.mlu = 0 # Max Link Utilization
 
     # Updates network state by concrete node (target node)
     def update(self, target_node_name: str, link_states: Dict[str, LinkState]):
@@ -26,7 +27,7 @@ class DataCollector:
         """
         for source_node_name, linkState in link_states.items():
             self.link_states[(source_node_name, target_node_name)] = linkState
-        print(self.link_states)
+        self.mlu = max([x['utilization'] for x in self.link_states.values()])
 
     # Returns network state
     def get_network_state(self):
