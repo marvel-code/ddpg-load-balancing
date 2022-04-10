@@ -1,25 +1,23 @@
 import numpy as np
-
 from stable_baselines3 import DDPG
 from stable_baselines3.common.env_checker import check_env
+from log import Log
 
+l = Log('agent')
 class Agent:
     
     def __init__(self, env):
         check_env(env)
-        model = DDPG("CnnPolicy", env, verbose=1)
-        model.learn(total_timesteps=10000, log_interval=10)
-        model.save("ddpg_pendulum")
-        env = model.get_env()
+        self.env = env
+        self.model = DDPG("CnnPolicy", env, verbose=1)
+        env.reset()
 
-        del model # remove to demonstrate saving and loading
-
-        model = DDPG.load("ddpg_pendulum")
-
-        obs = env.reset()
-        while True:
-            action, _states = model.predict(obs)
-            obs, rewards, dones, info = env.step(action)
-            env.render()
-
+    def step(self):
+        action = self.model.predict(self.obs)
+        self.env.step(action)
     
+    def launch(self):
+        self.step()
+
+
+
