@@ -24,6 +24,12 @@ PATH_COUNT_TO_OTHER_POD_EDGE = CORE_COUNT * AGGR_PER_POD_COUNT * AGGR_PER_POD_CO
 PATH_COUNT_TO_SAME_POD_EDGE = CORE_COUNT * AGGR_PER_POD_COUNT * (AGGR_PER_POD_COUNT - 1) + AGGR_PER_POD_COUNT
 PATH_COUNT_PER_EDGE = PATH_COUNT_TO_OTHER_POD_EDGE * (K - 1) * EDGE_PER_POD_COUNT + PATH_COUNT_TO_SAME_POD_EDGE * (EDGE_PER_POD_COUNT - 1)
 
+SAME_POD_EDGE_PAIRS = int(K**2 * (K - 2) / 4)
+OTHER_POD_EDGE_PAIRS = int(K**3 * (K  - 1) / 4)
+PROPS_COUNT = SAME_POD_EDGE_PAIRS * PATH_COUNT_TO_SAME_POD_EDGE + OTHER_POD_EDGE_PAIRS * PATH_COUNT_TO_OTHER_POD_EDGE
+SEND_DELIMITERS_COUNT = SAME_POD_EDGE_PAIRS + OTHER_POD_EDGE_PAIRS - 1
+SEND_MSG_LEN = PROPS_COUNT + SEND_DELIMITERS_COUNT
+
 LINK_CAPACITY_BPS = int(100 * 1024 * 1024)
 AGGR_FLOW_CAPACITY_BPS = LINK_CAPACITY_BPS * AGGR_PER_POD_COUNT
 
@@ -71,24 +77,30 @@ class CustomEnv(gym.Env):
     # Other
 
     def send_action(self, action: List[List[int]]):
+        """
+        Send "\x00\x01\x02\xff\x10\x11\x12"
+        Where \xXX is proportion, \xff is delimiter between edge pairs
+        """
         normalized_action: List[List[int]] = []
         for props in action:
             i = 0
-            pair_proportions = []
             while i < len(props):
-                s = sum(props[i:i + PATH_COUNT_TO_OTHER_POD_EDGE])
-                pair_proportions.append(map(lambda x: int(x / s * 100)))
+                subaction = props[i:i + PATH_COUNT_TO_OTHER_POD_EDGE]
+                s = sum(subaction)
+                normalized_action.append(map(lambda x: int(x / s * 100), subaction))
                 i += PATH_COUNT_TO_OTHER_POD_EDGE
-            normalized_action.append(pair_proportions)
-        msg: str = ';'.join(map(lambda x: ','.join(x), normalized_action))
-        self.client.send(msg.encode('ascii'))
+        
+        msg = (b'\xff').join(map(lambda x: b''.join(map(lambda y: y.to_bytes(1, 'big'), x)), normalized_action))
+        self.client.send(msg)
+        print('Action message length:', len(msg))
 
     def receive_network_state(self):
         network_state = self.client.recv(1000).decode('ascii')
         if self.client.fileno() == -1 or not network_state:
             exit()
+        print(network_state)
         aggr_flow_throughputs, path_utilizations = network_state.split('|')
-        self.aggr_flow_throughputs = map(lambda paths: map(int, paths.split(',')), aggr_flow_throughputs.split(';'))
+        self.aggr_flow_throughputs = map(int, aggr_flow_throughputs.split(';'))
         self.path_utilizations = map(lambda paths: map(int, paths.split(',')), path_utilizations.split(';'))
 
     def calculate_reward(self):
