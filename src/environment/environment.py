@@ -26,9 +26,8 @@ PATH_COUNT_PER_EDGE = PATH_COUNT_TO_OTHER_POD_EDGE * (K - 1) * EDGE_PER_POD_COUN
 
 SAME_POD_EDGE_PAIRS = int(K**2 * (K - 2) / 4)
 OTHER_POD_EDGE_PAIRS = int(K**3 * (K  - 1) / 4)
-PROPS_COUNT = SAME_POD_EDGE_PAIRS * PATH_COUNT_TO_SAME_POD_EDGE + OTHER_POD_EDGE_PAIRS * PATH_COUNT_TO_OTHER_POD_EDGE
-SEND_DELIMITERS_COUNT = SAME_POD_EDGE_PAIRS + OTHER_POD_EDGE_PAIRS - 1
-SEND_MSG_LEN = PROPS_COUNT + SEND_DELIMITERS_COUNT
+
+SEND_MSG_LEN = PATH_COUNT_PER_EDGE * EDGE_COUNT
 
 LINK_CAPACITY_BPS = int(100 * 1024 * 1024)
 AGGR_FLOW_CAPACITY_BPS = LINK_CAPACITY_BPS * AGGR_PER_POD_COUNT
@@ -77,10 +76,6 @@ class CustomEnv(gym.Env):
     # Other
 
     def send_action(self, action: List[List[int]]):
-        """
-        Send "\x00\x01\x02\xff\x10\x11\x12"
-        Where \xXX is proportion, \xff is delimiter between edge pairs
-        """
         normalized_action: List[List[int]] = []
         for props in action:
             i = 0
@@ -90,9 +85,10 @@ class CustomEnv(gym.Env):
                 normalized_action.append(map(lambda x: int(x / s * 100), subaction))
                 i += PATH_COUNT_TO_OTHER_POD_EDGE
         
-        msg = (b'\xff').join(map(lambda x: b''.join(map(lambda y: y.to_bytes(1, 'big'), x)), normalized_action))
+        msg = b''.join(map(lambda x: b''.join(map(lambda y: y.to_bytes(1, 'big'), x)), normalized_action))
+        if (len(msg) != SEND_MSG_LEN):
+            raise Exception(f'Invalid message length: {len(msg)}, {msg}')
         self.client.send(msg)
-        print('Action message length:', len(msg))
 
     def receive_network_state(self):
         network_state = self.client.recv(1000).decode('ascii')
@@ -111,6 +107,7 @@ class CustomEnv(gym.Env):
             for utilization in pair_utilizations:
                 distance_to_mean += abs(utilization - mean_utilization)
             reward += 1 - float(distance_to_mean) / len(pair_utilizations) / 100
+        print('Reward:', reward)
         return reward
 
 
