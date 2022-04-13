@@ -26,11 +26,26 @@ PATH_COUNT_PER_EDGE = PATH_COUNT_TO_OTHER_POD_EDGE * (K - 1) * EDGE_PER_POD_COUN
 
 SAME_POD_EDGE_PAIRS = int(K**2 * (K - 2) / 4)
 OTHER_POD_EDGE_PAIRS = int(K**3 * (K  - 1) / 4)
+EDGE_PAIRS = EDGE_COUNT * (EDGE_COUNT - 1)
+
+PATH_COUNT = SAME_POD_EDGE_PAIRS * PATH_COUNT_TO_SAME_POD_EDGE + OTHER_POD_EDGE_PAIRS * PATH_COUNT_TO_OTHER_POD_EDGE
+
+AFT_MSG_LEN = 4 * EDGE_PAIRS
+REWARD_MSG_LEN = 4
 
 SEND_MSG_LEN = PATH_COUNT_PER_EDGE * EDGE_COUNT
+RECV_MSG_LEN = AFT_MSG_LEN + REWARD_MSG_LEN
 
 LINK_CAPACITY_BPS = int(100 * 1024 * 1024)
 AGGR_FLOW_CAPACITY_BPS = LINK_CAPACITY_BPS * AGGR_PER_POD_COUNT
+
+def decodeInt(msg: bytes) -> int:
+  a = int(msg[0])
+  b = int(msg[1] << 8)
+  c = int(msg[2] << 16)
+  d = int(msg[3] << 24)
+  return a + b + c + d
+
 
 l = Log('env')
 class CustomEnv(gym.Env):
@@ -41,7 +56,7 @@ class CustomEnv(gym.Env):
         super(CustomEnv, self).__init__()
         # Throughput for each aggr flow
         self.observation_space = spaces.Box(low=0, high=AGGR_FLOW_CAPACITY_BPS, 
-            shape=(EDGE_COUNT, EDGE_COUNT - 1), dtype=np.uint8)
+            shape=(EDGE_PAIRS,), dtype=np.uint32)
         # Proportion for each path (not normalized)
         self.action_space = spaces.Box(low=0, high=100, 
             shape=(EDGE_COUNT, PATH_COUNT_PER_EDGE), dtype=np.uint8)
@@ -63,7 +78,7 @@ class CustomEnv(gym.Env):
         return observation, reward, done, info
 
     def reset(self):
-        self.aggr_flow_throughputs = [[0] * (EDGE_COUNT - 1) for i in range(EDGE_COUNT)]
+        self.aggr_flow_throughputs = np.array([0] * EDGE_PAIRS, dtype=np.uint32)
         return self.aggr_flow_throughputs
         
     def render(self, mode='human'):
@@ -91,23 +106,34 @@ class CustomEnv(gym.Env):
         self.client.send(msg)
 
     def receive_network_state(self):
-        network_state = self.client.recv(1000).decode('ascii')
-        if self.client.fileno() == -1 or not network_state:
+        network_state_bytes = self.client.recv(RECV_MSG_LEN + PATH_COUNT)
+        if self.client.fileno() == -1 or not network_state_bytes:
             exit()
-        print(network_state)
-        aggr_flow_throughputs, path_utilizations = network_state.split('|')
-        self.aggr_flow_throughputs = map(int, aggr_flow_throughputs.split(';'))
-        self.path_utilizations = map(lambda paths: map(int, paths.split(',')), path_utilizations.split(';'))
+        print('all', network_state_bytes[:RECV_MSG_LEN])
+        print('paths', network_state_bytes[RECV_MSG_LEN:])
+
+        self.aggr_flow_throughputs = np.array([decodeInt(network_state_bytes[i:i+4]) for i in range(0, EDGE_PAIRS * 4, 4)], dtype=np.uint32)
+        #self.path_utilizations = map(lambda paths: map(int, paths.split(',')), path_utilizations.split(';'))
+        self.received_reward = decodeInt(network_state_bytes[EDGE_PAIRS * 4:])
 
     def calculate_reward(self):
         reward = 0
-        for pair_utilizations in self.path_utilizations:
-            mean_utilization = mean(pair_utilizations)
-            distance_to_mean = 0
-            for utilization in pair_utilizations:
-                distance_to_mean += abs(utilization - mean_utilization)
-            reward += 1 - float(distance_to_mean) / len(pair_utilizations) / 100
-        print('Reward:', reward)
+        if self.received_reward:
+            # Reward is received from env (omnet++)
+            reward = self.received_reward
+            self.received_reward = 0
+            print('Received reward:', reward)
+        else:
+            # Calculate reward
+            for pair_utilizations in self.path_utilizations:
+                mean_utilization = mean(pair_utilizations)
+                distance_to_mean = 0
+                for utilization in pair_utilizations:
+                    distance_to_mean += abs(utilization - mean_utilization)
+                reward += 1 - float(distance_to_mean) / len(pair_utilizations) / 100
+                
+            print('Calculated reward:', reward)
+        #print('Reward:', reward)
         return reward
 
 
