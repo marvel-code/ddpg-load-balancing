@@ -10,6 +10,9 @@ from log import Log
 LinkState = TypedDict("LinkState", {
     'utilization': int,
 })
+
+OBSERVATION_DTYPE = np.int32
+ACTION_DTYPE = np.uint8
                         
 HOST = '127.0.0.1'
 PORT = 50123
@@ -56,10 +59,10 @@ class CustomEnv(gym.Env):
         super(CustomEnv, self).__init__()
         # Throughput for each aggr flow
         self.observation_space = spaces.Box(low=0, high=AGGR_FLOW_CAPACITY_BPS, 
-            shape=(EDGE_PAIRS,), dtype=np.uint32)
+            shape=(EDGE_PAIRS,), dtype=OBSERVATION_DTYPE)
         # Proportion for each path (not normalized)
         self.action_space = spaces.Box(low=0, high=100, 
-            shape=(EDGE_COUNT, PATH_COUNT_PER_EDGE), dtype=np.uint8)
+            shape=(EDGE_COUNT * PATH_COUNT_PER_EDGE,), dtype=ACTION_DTYPE)
         # Init socket
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.bind((HOST, PORT))
@@ -78,7 +81,7 @@ class CustomEnv(gym.Env):
         return observation, reward, done, info
 
     def reset(self):
-        self.aggr_flow_throughputs = np.array([0] * EDGE_PAIRS, dtype=np.uint32)
+        self.aggr_flow_throughputs = np.array([0] * EDGE_PAIRS, dtype=OBSERVATION_DTYPE)
         return self.aggr_flow_throughputs
         
     def render(self, mode='human'):
@@ -90,16 +93,22 @@ class CustomEnv(gym.Env):
 
     # Other
 
-    def send_action(self, action: List[List[int]]):
+    def send_action(self, flataction: List[int]):
+        action = [flataction[i:i+PATH_COUNT_PER_EDGE] for i in range(0, len(flataction), PATH_COUNT_PER_EDGE)]
+        print('action', action[0])
         normalized_action: List[List[int]] = []
         for props in action:
             i = 0
             while i < len(props):
                 subaction = props[i:i + PATH_COUNT_TO_OTHER_POD_EDGE]
                 s = sum(subaction)
-                normalized_action.append(map(lambda x: int(x / s * 100), subaction))
+                if s != 0:
+                    normalized_action.append(map(lambda x: int(float(x) / s * 100), subaction))
+                else:
+                    normalized_action.append([100] + [0]*len(subaction[1:]))
                 i += PATH_COUNT_TO_OTHER_POD_EDGE
         
+        print('norm_action', list(map(list, normalized_action)))
         msg = b''.join(map(lambda x: b''.join(map(lambda y: y.to_bytes(1, 'big'), x)), normalized_action))
         if (len(msg) != SEND_MSG_LEN):
             raise Exception(f'Invalid message length: {len(msg)}, {msg}')
@@ -109,12 +118,11 @@ class CustomEnv(gym.Env):
         network_state_bytes = self.client.recv(RECV_MSG_LEN + PATH_COUNT)
         if self.client.fileno() == -1 or not network_state_bytes:
             exit()
-        print('all', network_state_bytes[:RECV_MSG_LEN])
-        print('paths', network_state_bytes[RECV_MSG_LEN:])
 
-        self.aggr_flow_throughputs = np.array([decodeInt(network_state_bytes[i:i+4]) for i in range(0, EDGE_PAIRS * 4, 4)], dtype=np.uint32)
+        self.aggr_flow_throughputs = np.array([decodeInt(network_state_bytes[i:i+4]) for i in range(0, EDGE_PAIRS * 4, 4)], dtype=OBSERVATION_DTYPE)
         #self.path_utilizations = map(lambda paths: map(int, paths.split(',')), path_utilizations.split(';'))
         self.received_reward = decodeInt(network_state_bytes[EDGE_PAIRS * 4:])
+        print('aft', self.aggr_flow_throughputs[:10])
 
     def calculate_reward(self):
         reward = 0

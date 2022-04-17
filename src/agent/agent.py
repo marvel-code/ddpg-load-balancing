@@ -1,5 +1,5 @@
 import numpy as np
-from stable_baselines3 import DDPG
+from stable_baselines3 import DDPG, PPO
 from stable_baselines3.common.env_checker import check_env
 from log import Log
 
@@ -9,7 +9,11 @@ class Agent:
     def __init__(self, env):
         check_env(env)
         self.env = env
-        self.model = DDPG("CnnPolicy", env, verbose=1)
+        self.model = PPO(
+            policy="MlpPolicy", 
+            env=env, 
+            verbose=1,
+        )
         env.reset()
 
     def step(self):
@@ -17,7 +21,8 @@ class Agent:
         self.env.step(action)
     
     def launch(self):
-        self.step()
+        while True:
+            self.model.learn(100)
 
 
 
