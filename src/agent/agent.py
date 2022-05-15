@@ -9,7 +9,7 @@ class Agent:
     def __init__(self, env):
         check_env(env)
         self.env = env
-        self.model = PPO(
+        self.model = DDPG(
             policy="MlpPolicy", 
             env=env, 
             verbose=1,
@@ -17,8 +17,9 @@ class Agent:
         env.reset()
 
     def step(self):
-        action = self.model.predict(self.obs)
-        self.env.step(action)
+        obs = self.env.get_observation()
+        action = self.model.predict(obs)
+        return self.env.step(action)
     
     def launch(self):
         while True:
