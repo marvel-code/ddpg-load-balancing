@@ -1,8 +1,0 @@
-numpy
-stable-baselines3
-stable-baselines3[extra]
-#stable-baselines[mpi]
-gym[all]
-#tensorflow==1.15.5
-#ale-py
-fnss
