@@ -1,1 +1,10 @@
 .vscode/
+pyvenv.cfg
+Scripts/
+Lib/
+Include/
+*.zip
+**/__pycache__/
+_/
+dist/
+venv/
